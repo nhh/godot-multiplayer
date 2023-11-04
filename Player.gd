@@ -15,6 +15,8 @@ const JUMP_VELOCITY = 10.0
 # Get the gravity from the project settings to be synced with RigidBody nodes.
 var gravity = 20.0
 
+
+# Todo the first player who 
 func _enter_tree():
 	set_multiplayer_authority(str(name).to_int())
 
@@ -34,10 +36,10 @@ func _unhandled_input(event):
 	
 	if Input.is_action_just_pressed("shoot") \
 			and anim_player.current_animation != "shoot":
-		play_shoot_effects.rpc()
+		play_shoot_effects()
 		if raycast.is_colliding():
 			var hit_player = raycast.get_collider()
-			hit_player.receive_damage.rpc_id(hit_player.get_multiplayer_authority())
+			#hit_player.receive_damage.rpc_id(hit_player.get_multiplayer_authority())
 
 func _physics_process(delta):
 	if not is_multiplayer_authority(): return
@@ -70,14 +72,12 @@ func _physics_process(delta):
 
 	move_and_slide()
 
-@rpc("call_local")
 func play_shoot_effects():
 	anim_player.stop()
 	anim_player.play("shoot")
 	muzzle_flash.restart()
 	muzzle_flash.emitting = true
 
-@rpc("any_peer")
 func receive_damage():
 	health -= 1
 	if health <= 0:
