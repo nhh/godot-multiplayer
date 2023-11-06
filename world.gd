@@ -4,44 +4,29 @@ extends Node
 @onready var address_entry = $CanvasLayer/MainMenu/MarginContainer/VBoxContainer/AddressEntry
 @onready var hud = $CanvasLayer/HUD
 @onready var health_bar = $CanvasLayer/HUD/HealthBar
-
+@onready var server
+@onready var client
 
 const Player = preload("res://player.tscn")
-const PORT = 9999
-var enet_peer = ENetMultiplayerPeer.new()
+const Server = preload("res://Server.gd")
+const Client = preload("res://Client.gd")
 
-func _ready():
-	multiplayer.server_relay = false
-	
 func _unhandled_input(event):
 	if Input.is_action_just_pressed("quit"):
 		get_tree().quit()
 
 func _on_host_button_pressed():
-	#main_menu.hide()
-	#hud.show()
-	
-	enet_peer.create_server(PORT)
-	
-	multiplayer.multiplayer_peer = enet_peer
-	
-	# Todo broadcast these messages so the scene can populate correctly
-	#multiplayer.peer_connected.connect(add_player)
-	#multiplayer.peer_disconnected.connect(remove_player)
-	
-	multiplayer.peer_packet.connect(on_client_to_server_message)
+	server = Server.new()
+	get_tree().get_root().add_child(server)
+	#multiplayer.peer_packet.connect(on_client_to_server_message)
 	
 func _on_join_button_pressed():
-	main_menu.hide()
-	hud.show()
+	client = Client.new()
+	get_tree().get_root().add_child(client)
 	
-	enet_peer.set_target_peer(1)
-	enet_peer.create_client(address_entry.text, PORT)
-	
-	multiplayer.multiplayer_peer = enet_peer
-	multiplayer.peer_packet.connect(on_server_to_client_message)
-	
-	add_player(multiplayer.get_unique_id())
+	client.connect_to_host(address_entry.text)
+
+	client.connected.connect(self.add_player)
 
 func add_player(peer_id):
 	var player = Player.instantiate()
@@ -59,34 +44,25 @@ func update_health_bar(health_value):
 	health_bar.value = health_value
 
 func _process(delta):
-	if(enet_peer.get_connection_status() == 0):
+	if(client == null || server != null):
 		return
 		
-	if(multiplayer.get_unique_id() == 1):
+	if(client.get_unique_id() == null):
 		return
-		
-	var player = get_node_or_null("/root/"+str(multiplayer.get_unique_id()))
+	
+	# Todo can be cached
+	var player = get_node_or_null("/root/"+str(client.get_unique_id()))
+	
 	if(player == null):
 		return
 	
 	# Todo ERROR: Trying to send a raw packet via a multiplayer peer which is not connected.
-	var array = PackedVector3Array([player.position, player.rotation, player.camera.rotation])
-	multiplayer.send_bytes(var_to_bytes(array))
-
-# Will only be called on the server
-func on_client_to_server_message(id, message):
-	for client_id in multiplayer.get_peers():
-		if (client_id == multiplayer.get_unique_id() || client_id == id):
-			continue
-		
-		# Just route all messages to every other peers
-		var tunnel = enet_peer.get_peer(client_id) as ENetPacketPeer
-		tunnel.send(0, message, 0)
+	var content = PackedVector3Array([player.position, player.rotation, player.camera.rotation])
+	var packet = var_to_bytes([Server.OpCodes.PLAYER_UPDATE, client.get_unique_id(), content])
+	
+	client.send(packet)
 
 func on_server_to_client_message(id, message_from_server):
-	if(id == multiplayer.get_unique_id()):
-		return
-
 	var data = bytes_to_var_with_objects(message_from_server)
 	var player = get_node_or_null("/root/"+str(id))
 	
